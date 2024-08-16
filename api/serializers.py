@@ -3,7 +3,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 
-from .models import Cart, CartItem, Order, OrderItem, Product
+from .models import Cart, CartItem, Order, OrderItem, Product, Review
 User = get_user_model()
 
 
@@ -45,8 +45,22 @@ class UserSerializer(serializers.ModelSerializer):
         instance.save()
         return instance
     
-    
+class ReviewSerializer(serializers.ModelSerializer):
+    user = serializers.ReadOnlyField(source='user.email')
+
+    class Meta:
+        model = Review
+        fields = ['id', 'product', 'user', 'rating', 'comment', 'created_at', 'updated_at']
+
+    def validate_rating(self, value):
+        if value < 1 or value > 5:
+            raise serializers.ValidationError("Rating must be between 1 and 5.")
+        return value  
+        
 class ProductSerializer(serializers.ModelSerializer):
+    average_rating = serializers.ReadOnlyField()
+    reviews = ReviewSerializer(many=True, read_only=True)
+
     class Meta:
         model = Product
         fields = '__all__'
@@ -160,3 +174,5 @@ class OrderSerializer(serializers.ModelSerializer):
         cart_items.delete()
 
         return order
+    
+  

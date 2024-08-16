@@ -1,12 +1,12 @@
-from rest_framework import generics,status,viewsets
+from rest_framework import generics,status,viewsets,filters
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model
 from rest_framework.exceptions import PermissionDenied
 
-from .models import Cart, CartItem, Order, OrderItem, Product
-from .serializers import CartItemSerializer, CustomTokenObtainPairSerializer, OrderSerializer, ProductSerializer, UserSerializer
+from .models import Cart, CartItem, Order, OrderItem, Product, Review
+from .serializers import CartItemSerializer, CustomTokenObtainPairSerializer, OrderSerializer, ProductSerializer, ReviewSerializer, UserSerializer
 from rest_framework.response import Response
 from .permissions import IsAdminOrSelf, IsSeller
 
@@ -75,7 +75,9 @@ class UserViewSet(viewsets.ModelViewSet):
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly, IsSeller]
+    # permission_classes = [IsAuthenticatedOrReadOnly, IsSeller]
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['name', 'description']
 
     def get_queryset(self):
         return Product.objects.all()
@@ -103,11 +105,37 @@ class CartItemViewSet(viewsets.ModelViewSet):
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.all()
     serializer_class = OrderSerializer
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         print(f"updating product for user: {self.request.user}")
 
         return Order.objects.filter(user=self.request.user)
 
+class ReviewViewSet(viewsets.ModelViewSet):
+    queryset = Review.objects.all()
+    serializer_class = ReviewSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
+    def perform_create(self, serializer):
+        # Set the user who creates the review
+        serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer):
+        # Ensure that the user can only update their own review
+        if serializer.instance.user != self.request.user:
+            raise PermissionDenied("You cannot edit this review.")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        # Ensure that the user can only delete their own review
+        if instance.user != self.request.user:
+            raise PermissionDenied("You cannot delete this review.")
+        instance.delete()
+
+    def get_queryset(self):
+        # Optionally, filter reviews by product
+        product_id = self.request.query_params.get('product')
+        if product_id:
+            return Review.objects.filter(product_id=product_id)
+        return super().get_queryset()
